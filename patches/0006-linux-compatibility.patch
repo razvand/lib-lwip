@@ -1,0 +1,210 @@
+diff --git a/src/api/netdb.c b/src/api/netdb.c
+index 8771425..57d8dee 100644
+--- a/src/api/netdb.c
++++ b/src/api/netdb.c
+@@ -374,7 +374,6 @@ lwip_getaddrinfo(const char *nodename, const char *servname,
+     /* set up sockaddr */
+     inet6_addr_from_ip6addr(&sa6->sin6_addr, ip_2_ip6(&addr));
+     sa6->sin6_family = AF_INET6;
+-    sa6->sin6_len = sizeof(struct sockaddr_in6);
+     sa6->sin6_port = lwip_htons((u16_t)port_nr);
+     sa6->sin6_scope_id = ip6_addr_zone(ip_2_ip6(&addr));
+     ai->ai_family = AF_INET6;
+@@ -385,7 +384,6 @@ lwip_getaddrinfo(const char *nodename, const char *servname,
+     /* set up sockaddr */
+     inet_addr_from_ip4addr(&sa4->sin_addr, ip_2_ip4(&addr));
+     sa4->sin_family = AF_INET;
+-    sa4->sin_len = sizeof(struct sockaddr_in);
+     sa4->sin_port = lwip_htons((u16_t)port_nr);
+     ai->ai_family = AF_INET;
+ #endif /* LWIP_IPV4 */
+diff --git a/src/api/sockets.c b/src/api/sockets.c
+index 298a9a2..ad54979 100644
+--- a/src/api/sockets.c
++++ b/src/api/sockets.c
+@@ -89,7 +89,6 @@
+ 
+ #if LWIP_IPV4
+ #define IP4ADDR_PORT_TO_SOCKADDR(sin, ipaddr, port) do { \
+-      (sin)->sin_len = sizeof(struct sockaddr_in); \
+       (sin)->sin_family = AF_INET; \
+       (sin)->sin_port = lwip_htons((port)); \
+       inet_addr_from_ip4addr(&(sin)->sin_addr, ipaddr); \
+@@ -101,7 +100,6 @@
+ 
+ #if LWIP_IPV6
+ #define IP6ADDR_PORT_TO_SOCKADDR(sin6, ipaddr, port) do { \
+-      (sin6)->sin6_len = sizeof(struct sockaddr_in6); \
+       (sin6)->sin6_family = AF_INET6; \
+       (sin6)->sin6_port = lwip_htons((port)); \
+       (sin6)->sin6_flowinfo = 0; \
+@@ -697,9 +695,6 @@ lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+     }
+ 
+     IPADDR_PORT_TO_SOCKADDR(&tempaddr, &naddr, port);
+-    if (*addrlen > tempaddr.sa.sa_len) {
+-      *addrlen = tempaddr.sa.sa_len;
+-    }
+     MEMCPY(addr, &tempaddr, *addrlen);
+ 
+     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_accept(%d) returning new sock=%d addr=", s, newsock));
+@@ -1042,11 +1037,6 @@ lwip_sock_make_addr(struct netconn *conn, ip_addr_t *fromaddr, u16_t port,
+ #endif /* LWIP_IPV4 && LWIP_IPV6 */
+ 
+   IPADDR_PORT_TO_SOCKADDR(&saddr, fromaddr, port);
+-  if (*fromlen < saddr.sa.sa_len) {
+-    truncated = 1;
+-  } else if (*fromlen > saddr.sa.sa_len) {
+-    *fromlen = saddr.sa.sa_len;
+-  }
+   MEMCPY(from, &saddr, *fromlen);
+   return truncated;
+ }
+@@ -2741,9 +2731,6 @@ lwip_getaddrname(int s, struct sockaddr *name, socklen_t *namelen, u8_t local)
+   ip_addr_debug_print_val(SOCKETS_DEBUG, naddr);
+   LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%"U16_F")\n", port));
+ 
+-  if (*namelen > saddr.sa.sa_len) {
+-    *namelen = saddr.sa.sa_len;
+-  }
+   MEMCPY(name, &saddr, *namelen);
+ 
+   sock_set_errno(sock, 0);
+diff --git a/src/include/lwip/ip.h b/src/include/lwip/ip.h
+index 653c3b2..bb2d62d 100644
+--- a/src/include/lwip/ip.h
++++ b/src/include/lwip/ip.h
+@@ -96,9 +96,9 @@ struct ip_pcb {
+ /*
+  * Option flags per-socket. These are the same like SO_XXX in sockets.h
+  */
+-#define SOF_REUSEADDR     0x04U  /* allow local address reuse */
+-#define SOF_KEEPALIVE     0x08U  /* keep connections alive */
+-#define SOF_BROADCAST     0x20U  /* permit to send and to receive broadcast messages (see IP_SOF_BROADCAST option) */
++#define SOF_REUSEADDR     0x02U  /* allow local address reuse */
++#define SOF_KEEPALIVE     0x09U  /* keep connections alive */
++#define SOF_BROADCAST     0x06U  /* permit to send and to receive broadcast messages (see IP_SOF_BROADCAST option) */
+ 
+ /* These flags are inherited (e.g. from a listen-pcb to a connection-pcb): */
+ #define SOF_INHERITED   (SOF_REUSEADDR|SOF_KEEPALIVE)
+diff --git a/src/include/lwip/sockets.h b/src/include/lwip/sockets.h
+index 5c19a00..dd24369 100644
+--- a/src/include/lwip/sockets.h
++++ b/src/include/lwip/sockets.h
+@@ -60,7 +60,7 @@ extern "C" {
+ /* If your port already typedef's sa_family_t, define SA_FAMILY_T_DEFINED
+    to prevent this code from redefining it. */
+ #if !defined(sa_family_t) && !defined(SA_FAMILY_T_DEFINED)
+-typedef u8_t sa_family_t;
++typedef u16_t sa_family_t;
+ #endif
+ /* If your port already typedef's in_port_t, define IN_PORT_T_DEFINED
+    to prevent this code from redefining it. */
+@@ -71,7 +71,6 @@ typedef u16_t in_port_t;
+ #if LWIP_IPV4
+ /* members are in network byte order */
+ struct sockaddr_in {
+-  u8_t            sin_len;
+   sa_family_t     sin_family;
+   in_port_t       sin_port;
+   struct in_addr  sin_addr;
+@@ -82,7 +81,6 @@ struct sockaddr_in {
+ 
+ #if LWIP_IPV6
+ struct sockaddr_in6 {
+-  u8_t            sin6_len;      /* length of this structure    */
+   sa_family_t     sin6_family;   /* AF_INET6                    */
+   in_port_t       sin6_port;     /* Transport layer port #      */
+   u32_t           sin6_flowinfo; /* IPv6 flow information       */
+@@ -92,13 +90,11 @@ struct sockaddr_in6 {
+ #endif /* LWIP_IPV6 */
+ 
+ struct sockaddr {
+-  u8_t        sa_len;
+   sa_family_t sa_family;
+   char        sa_data[14];
+ };
+ 
+ struct sockaddr_storage {
+-  u8_t        s2_len;
+   sa_family_t ss_family;
+   char        s2_data1[2];
+   u32_t       s2_data2[3];
+@@ -224,33 +220,30 @@ struct ifreq {
+ /*
+  * Option flags per-socket. These must match the SOF_ flags in ip.h (checked in init.c)
+  */
+-#define SO_REUSEADDR   0x0004 /* Allow local address reuse */
+-#define SO_KEEPALIVE   0x0008 /* keep connections alive */
+-#define SO_BROADCAST   0x0020 /* permit to send and to receive broadcast messages (see IP_SOF_BROADCAST option) */
++#define SO_REUSEADDR   0x0002 /* Allow local address reuse */
++#define SO_KEEPALIVE   0x0009 /* keep connections alive */
++#define SO_BROADCAST   0x0006 /* permit to send and to receive broadcast messages (see IP_SOF_BROADCAST option) */
+ 
+ 
+ /*
+  * Additional options, not kept in so_options.
+  */
+ #define SO_DEBUG        0x0001 /* Unimplemented: turn on debugging info recording */
+-#define SO_ACCEPTCONN   0x0002 /* socket has had listen() */
+-#define SO_DONTROUTE    0x0010 /* Unimplemented: just use interface addresses */
+-#define SO_USELOOPBACK  0x0040 /* Unimplemented: bypass hardware when possible */
++#define SO_ACCEPTCONN   0x001e /* socket has had listen() */
++#define SO_DONTROUTE    0x0005 /* Unimplemented: just use interface addresses */
+ #define SO_LINGER       0x0080 /* linger on close if data present */
+ #define SO_DONTLINGER   ((int)(~SO_LINGER))
+-#define SO_OOBINLINE    0x0100 /* Unimplemented: leave received OOB data in line */
+-#define SO_REUSEPORT    0x0200 /* Unimplemented: allow local address & port reuse */
+-#define SO_SNDBUF       0x1001 /* Unimplemented: send buffer size */
+-#define SO_RCVBUF       0x1002 /* receive buffer size */
+-#define SO_SNDLOWAT     0x1003 /* Unimplemented: send low-water mark */
+-#define SO_RCVLOWAT     0x1004 /* Unimplemented: receive low-water mark */
+-#define SO_SNDTIMEO     0x1005 /* send timeout */
+-#define SO_RCVTIMEO     0x1006 /* receive timeout */
+-#define SO_ERROR        0x1007 /* get error status and clear */
+-#define SO_TYPE         0x1008 /* get socket type */
+-#define SO_CONTIMEO     0x1009 /* Unimplemented: connect timeout */
+-#define SO_NO_CHECK     0x100a /* don't create UDP checksum */
+-#define SO_BINDTODEVICE 0x100b /* bind to device */
++#define SO_OOBINLINE    0x000a /* Unimplemented: leave received OOB data in line */
++#define SO_SNDBUF       0x0007 /* Unimplemented: send buffer size */
++#define SO_RCVBUF       0x0008 /* receive buffer size */
++#define SO_SNDLOWAT     0x0013 /* Unimplemented: send low-water mark */
++#define SO_RCVLOWAT     0x0012 /* Unimplemented: receive low-water mark */
++#define SO_SNDTIMEO     0x0015 /* send timeout */
++#define SO_RCVTIMEO     0x0014 /* receive timeout */
++#define SO_ERROR        0x0004 /* get error status and clear */
++#define SO_TYPE         0x0003 /* get socket type */
++#define SO_NO_CHECK     0x000b /* don't create UDP checksum */
++#define SO_BINDTODEVICE 0x0019 /* bind to device */
+ 
+ /*
+  * Structure used for manipulating linger option.
+@@ -263,7 +256,7 @@ struct linger {
+ /*
+  * Level number for (get/set)sockopt() to apply to socket itself.
+  */
+-#define  SOL_SOCKET  0xfff    /* options for socket level */
++#define  SOL_SOCKET     1    /* options for socket level */
+ 
+ 
+ #define AF_UNSPEC       0
+@@ -289,12 +282,12 @@ struct linger {
+ #define IPPROTO_RAW     255
+ 
+ /* Flags we can use with send and recv. */
+-#define MSG_PEEK       0x01    /* Peeks at an incoming message */
+-#define MSG_WAITALL    0x02    /* Unimplemented: Requests that the function block until the full amount of data requested can be returned */
+-#define MSG_OOB        0x04    /* Unimplemented: Requests out-of-band data. The significance and semantics of out-of-band data are protocol-specific */
+-#define MSG_DONTWAIT   0x08    /* Nonblocking i/o for this operation only */
+-#define MSG_MORE       0x10    /* Sender will send more */
+-#define MSG_NOSIGNAL   0x20    /* Uninmplemented: Requests not to send the SIGPIPE signal if an attempt to send is made on a stream-oriented socket that is no longer connected. */
++#define MSG_PEEK       0x0002  /* Peeks at an incoming message */
++#define MSG_WAITALL    0x00ff  /* Unimplemented: Requests that the function block until the full amount of data requested can be returned */
++#define MSG_OOB        0x0001  /* Unimplemented: Requests out-of-band data. The significance and semantics of out-of-band data are protocol-specific */
++#define MSG_DONTWAIT   0x0040  /* Nonblocking i/o for this operation only */
++#define MSG_MORE       0x8000  /* Sender will send more */
++#define MSG_NOSIGNAL   0x4000  /* Uninmplemented: Requests not to send the SIGPIPE signal if an attempt to send is made on a stream-oriented socket that is no longer connected. */
+ 
+ 
+ /*
